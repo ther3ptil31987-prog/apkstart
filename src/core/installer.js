@@ -302,6 +302,8 @@ class Installer {
       // 用户手动设过 orientationOverride 时以用户的为准，这里只是「默认值」。
       orientation: meta.orientation || (existing ? existing.orientation || null : null),
       pinned: existing ? !!existing.pinned : false,
+      // 重新装过 = 权限表可能被重置，清掉「已授过」缓存，下次启动重新核一遍
+      permGranted: false,
     };
 
     store.upsertApp(app);
