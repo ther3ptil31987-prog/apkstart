@@ -69,6 +69,29 @@ function countOrphanProcesses() {
   });
 }
 
+/**
+ * Windows Audio（Audiosrv）是不是在运行。
+ * 只有明确拿到 sc query 的输出才写 true/false；探测失败留 null，
+ * 判定层当「不知道」，绝不因为查询失败就报「音频服务已停止」。
+ */
+function queryWindowsAudioService() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') { resolve(null); return; }
+    try {
+      execFile('sc.exe', ['query', 'Audiosrv'], { timeout: 8000, windowsHide: true }, (err, stdout) => {
+        if (err) { resolve(null); return; }
+        const text = String(stdout || '');
+        if (!/SERVICE_NAME:\s*Audiosrv/i.test(text)) { resolve(null); return; }
+        const m = text.match(/STATE\s*:\s*\d+\s+([A-Z_]+)/i);
+        if (!m) { resolve(null); return; }
+        resolve(/^RUNNING$/i.test(m[1]));
+      });
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
 /** 读最近日志文件里的错误行（最多看尾部 300 行） */
 function recentLogErrors(files, max = 300) {
   const out = [];
@@ -110,6 +133,7 @@ async function collect(ctx) {
     network: {},
     logs: {},
     accel: { checked: false },
+    audio: { checked: false, enabled: null, serviceRunning: null },
   };
 
   // ---- 设置（最便宜，先取） ----
@@ -123,6 +147,15 @@ async function collect(ctx) {
     autoFullscreen: !!(settings.display && settings.display.autoFullscreenOnLaunch),
     keepSnapshot: !(settings.engine && settings.engine.keepSnapshot === false),
     resourceMode: (settings.engine && settings.engine.resourceMode) || '',
+  };
+
+  // ---- 声音 ----
+  // 引擎的 audio=false 会让模拟器带 -no-audio 启动，是「只有 ApkStart 没声音」的头号原因；
+  // Windows Audio 服务被停掉则系统其它软件也没声。两者都被 0.6.2 纳入自动检测。
+  obs.audio = {
+    checked: true,
+    enabled: !(settings.engine && settings.engine.audio === false),
+    serviceRunning: await withTimeout(queryWindowsAudioService(), 9000, null),
   };
 
   // ---- 运行时状态 ----

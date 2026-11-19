@@ -112,6 +112,8 @@ contextBridge.exposeInMainWorld('apkstart', {
   openSharedDir: () => invoke('share:open'),
 
   openExternal: (url) => invoke('shell:open', url),
+  // 0.6.2 内置手册：传 { topic } / { issue } / { error } 都会定位到对应章节
+  openManual: (payload) => invoke('manual:open', payload || {}),
   winMinimize: () => invoke('window:minimize'),
   winMaximize: () => invoke('window:maximize'),
   winClose: () => invoke('window:close'),

@@ -1,4 +1,4 @@
-# Microsoft Store 提交材料（ApkStart 0.6.1）
+# Microsoft Store 提交材料（ApkStart 0.6.2）
 
 > 这份文件是给 Partner Center 表单直接复制用的。包体、图标、清单由脚本产出，
 > 只有「注册账号 → 预留名称 → 上传 → 送审」必须在网页上人工完成。
@@ -12,7 +12,7 @@
 | Product name | `ApkStart` |
 | Category | Developer tools → Utilities & tools（备选：Productivity） |
 | Price | Free |
-| Package | `dist/store/ApkStart_0.6.1.0_x64.msix`（x64，约 1.5 GB） |
+| Package | `dist/store/ApkStart_0.6.2.0_x64.msix`（x64，约 1.5 GB） |
 | 支持语言 | 简体中文 / English (United States) |
 | 官网 | https://github.com/RoutineMiku/apkstart |
 | 支持邮箱 | <!-- 填你的邮箱 --> |
@@ -22,10 +22,17 @@
 
 **中文**
 ```
-0.6.1：
-· 修复「启动后看到的还是 ApkStart 的美化等待窗口」：现在一点开应用就让模拟器原生窗口接管画面，你能立刻看到安卓自己的开机画面，而不是我们的转圈页。
-· 原生窗口接管失败会自动重试 4 次（冷启动、换横竖屏之后 Qt 窗口会晚一点才出现），四次都不成功才临时退回内置窗口，不会再留下一屏黑或一张永远转圈的等待页。
-· 默认窗口设置加固：只要没在设置里主动切换过窗口承载方式，一律按模拟器原生窗口启动；老配置里残留的嵌入开关也会被自动纠正。
+0.6.2：
+· 内置使用手册：标题栏「?」、设置 → 关于、托盘菜单都能直接打开；可筛选目录、打印或存成 PDF，不用再去网上找文档。
+· 修复失败自动给教程：未启用硬件加速、安装失败、ARM 转译层缺失、adb 未授权、没有声音等问题自动处理不成功时，直接打开对应章节；每条检测结果旁也有「教程」按钮，同一个教程一次运行内只自动弹一次。
+· 自动检测新增声音检查：能发现「安卓应用声音」被关掉和 Windows Audio 服务停止，前者可一键重新打开并重启运行时，后者给出明确的手动步骤。
+· ARM 应用安装更稳：报错本身就是切换兼容镜像的理由；切换前作废旧快照，避免恢复到没有翻译层的旧状态；二次仍失败会如实告知，不再显示「正在重试」。
+· 保留 0.6.1 的原生窗口接管（4 次重试）、换向等待提示、首帧判定、双实例保护与全屏居中修复。
+
+0.6.1（已包含）：
+· 修复启动后仍是 ApkStart 等待窗口：原生窗口尽早接管画面；接管失败自动重试四次。
+· 修复换向约 40 秒白屏与偶发打不开；首帧判定改为守到应用真正画出第一屏。
+· 修复连点两次图标导致旧实例关掉新实例模拟器的问题；全屏按屏幕比例居中。
 
 0.6.0（已包含）：
 · 修复底部「按键错位」：安卓 13 的平板任务栏（屏幕底部那条半透明栏）在平板排版下会盖住应用、把返回/主页/最近键挤到左下角，现在默认关闭。
@@ -95,10 +102,17 @@
 
 **English**
 ```
-0.6.1:
-· Fixed "launching an app still shows ApkStart's own styled waiting window": the emulator's native window now takes over the moment you open an app, so you see Android's own boot screen instead of our spinner page.
-· Native window hand-over now retries four times (Qt's window can appear a little late on cold starts and after an orientation change); only if all four fail does it temporarily fall back to the built-in window — no more black screen and no endless spinner.
-· Hardened the default window setting: unless you explicitly switched the window host in Settings, ApkStart always launches with the emulator's native window, and a leftover "embedded" flag from older configs is corrected automatically.
+0.6.2:
+· The user manual is now built in. Open it from the "?" button in the title bar, Settings → About, or the tray menu. Searchable contents, print and Save as PDF are supported.
+· Help arrives when it is needed: if automatic repair fails for hardware acceleration, app installation, ARM translation, adb authorization, or audio, ApkStart opens the matching manual section. Every diagnostic item also has a "Guide" button; the same section is auto-opened at most once per session.
+· Auto diagnostics now covers sound: it detects Android audio being turned off and the Windows Audio service being stopped. The first can be fixed with one click and a runtime restart; the second comes with clear manual steps.
+· More reliable ARM installs: an ABI error alone triggers a switch to the compatible image, the old snapshot is invalidated first, and a second failure is reported honestly instead of claiming a retry is still running.
+· Keeps the 0.6.1 fixes: native window hand-over with four retries, orientation-switch progress, first-frame detection, protection against two instances fighting over the emulator, and centred fullscreen layout.
+
+0.6.1 (included):
+· Fixed launches that still showed ApkStart's own waiting screen; the emulator's native window takes over early and retries four times.
+· Fixed the ~40 second blank screen during orientation switches, and the first-frame detection that left a white screen with only the app icon.
+· Fixed a quitting instance shutting down the emulator a newer instance was using; fullscreen now keeps the panel aspect ratio and centres the window.
 
 0.6.0 (included):
 · Fixed the "misaligned buttons" at the bottom: on tablet layout Android 13's large-screen taskbar sits over the app and squeezes back/home/recents into the bottom-left corner — it is now off by default.
@@ -371,7 +385,7 @@ Notes:
    ```powershell
    node build/msix.js --identity "<Identity/Name>" --publisher "<Identity/Publisher>"
    ```
-4. **Packages** → 上传 `dist/store/ApkStart_0.6.1.0_x64.msix`，等待校验通过。
+4. **Packages** → 上传 `dist/store/ApkStart_0.6.2.0_x64.msix`，等待校验通过。
 5. **Store listing** → 填第 2–5 节的内容、上传截图、选分类。
 6. **Pricing and availability** → Free，市场选中国 + 全球。
 7. **Submission options** → 粘贴第 6 节的 certification notes。

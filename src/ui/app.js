@@ -111,6 +111,30 @@ function toast({ title, body = '', type = 'info', progress = null, sticky = fals
   return ctl;
 }
 
+/* ---------------- 内置手册 ---------------- */
+
+/** 打开内置手册；传故障信息时由主进程映射到对应章节 */
+function openManual(payload) {
+  if (!api || typeof api.openManual !== 'function') return Promise.resolve(null);
+  return api.openManual(payload || { topic: 'overview' }).catch(() => null);
+}
+
+/** 自动检测问题 → 对应教程。reason 只影响主进程的去重策略。 */
+function openManualForIssue(issue, reason = 'clicked') {
+  if (!issue) return openManual({ topic: 'overview', reason });
+  return openManual({
+    issue: issue.code,
+    title: issue.title,
+    detail: issue.detail,
+    reason,
+  });
+}
+
+/** 安装/运行原始报错 → 对应教程 */
+function openManualForError(message, reason = 'install-failed') {
+  return openManual({ error: message, reason });
+}
+
 /* ---------------- 渲染 ---------------- */
 
 function visibleApps() {
@@ -487,7 +511,13 @@ function friendlyInstallErrorText(msg) {
   if (/INSUFFICIENT_STORAGE|not enough space|空间不足|ENOSPC/i.test(s)) {
     return `${s}\n安卓数据分区不够用：设置 → 性能与资源占用 → 安卓数据分区调大后点「立即扩容」。`;
   }
-  if (/NO_MATCHING_ABIS/i.test(s)) return `${s}\n这个包只有 ARM 库，正在自动切换兼容镜像后重试。`;
+  // 只有真正失败才走到这里：切换镜像是「进行中」的进度提示（install:progress），
+  // 绝不能在红色失败横幅里再说「正在重试」——那会让用户以为还在处理，其实是真的失败了。
+  if (/NO_MATCHING_ABIS/i.test(s)) {
+    return /已切换到.*仍然安装失败|abiRetried/i.test(s)
+      ? `${s}\nARM 兼容镜像已启用仍装不上，请到「设置 → 诊断与修复」导出诊断报告反馈。`
+      : `${s}\n这个包只有 ARM 库。程序会自动切到兼容镜像重装一次，请留意后续提示。`;
+  }
   if (/INSTALL_FAILED_ALREADY_EXISTS|signatures do not match/i.test(s)) {
     return `${s}\n同包名但签名不同（常见于从别的渠道装过）。在应用卡片右键「卸载」后再装。`;
   }
@@ -1289,6 +1319,7 @@ function renderAutodebug(res) {
             ${it.detail ? `<div class="dbg-detail">${esc(it.detail)}</div>` : ''}
           </div>
           ${it.fix ? `<button class="dbg-fix" data-code="${esc(it.code)}">处理</button>` : ''}
+          <button class="dbg-help" data-code="${esc(it.code)}" title="打开内置教程">教程</button>
         </div>`).join('')}
     </div>`;
   }).join('');
@@ -1297,6 +1328,12 @@ function renderAutodebug(res) {
     b.addEventListener('click', () => {
       const issue = issues.find((x) => x.code === b.dataset.code);
       if (issue) fixIssue(issue);
+    });
+  });
+  list.querySelectorAll('.dbg-help').forEach((b) => {
+    b.addEventListener('click', () => {
+      const issue = issues.find((x) => x.code === b.dataset.code);
+      if (issue) openManualForIssue(issue, 'clicked');
     });
   });
 
@@ -2217,6 +2254,9 @@ function bindEvents() {
   });
 
   $('btnSettings').addEventListener('click', openSettings);
+  // 0.6.2：内置手册从标题栏和「关于」页都能直接打开
+  $('btnManual')?.addEventListener('click', () => openManual({ topic: 'overview', reason: 'toolbar' }));
+  $('btnOpenManual')?.addEventListener('click', () => openManual({ topic: 'overview', reason: 'about' }));
   // 状态标签也当入口：点「需要部署 / 引导中 / Android 14」直接进设置的运行时面板
   $('engineTag').addEventListener('click', () => showSetup(true));
   $('btnCloseSettings').addEventListener('click', closeSettings);
@@ -2380,11 +2420,14 @@ function bindEvents() {
     // 报错了就别再让「正在安装…」那条一直转圈（可能来自双击 APK 的另一条链路）
     if (installToast) { try { installToast.dismiss(); } catch (_) { /* ignore */ } installToast = null; }
     const name = p && p.file ? String(p.file).split(/[\\/]/).pop() : '';
+    const raw = (p && p.message) || '未知错误';
     toast({
       title: name ? `安装失败：${name}` : '安装失败',
-      body: friendlyInstallErrorText((p && p.message) || '未知错误'),
+      body: friendlyInstallErrorText(raw),
       type: 'error',
     });
+    // 0.6.2：安装失败自动把对应章节推到用户面前（ARM / 签名 / 空间…）
+    openManualForError(raw, 'install-failed');
   });
   api.on('toast', (p) => toast({ title: p.message, type: p.type === 'error' ? 'error' : 'info' }));
   api.on('app:launched', () => setTimeout(refreshApps, 800));
@@ -2584,6 +2627,7 @@ function renderEnvCheck(r) {
             <div class="ec-hint">${esc(i.hint || '')}</div>
           </div>
           ${i.fix ? `<button class="ec-fix" data-code="${esc(i.code)}">修复</button>` : ''}
+          <button class="ec-help" data-code="${esc(i.code)}" title="打开内置教程">教程</button>
         </div>`).join('')}
     </div>`;
   const re = $('btnEnvRecheck');
@@ -2596,6 +2640,20 @@ function renderEnvCheck(r) {
       if (issue) fixIssue(issue);
     });
   });
+  box.querySelectorAll('.ec-help').forEach((b) => {
+    b.addEventListener('click', () => {
+      const issue = issues.find((x) => x.code === b.dataset.code);
+      if (issue) openManualForIssue(issue, 'clicked');
+    });
+  });
+}
+
+/** 修复没成功：如实报错，并把对应教程自动打开（同一章节主进程 60 秒内只弹一次） */
+function failFix(issue, ctl, body) {
+  const msg = body || '请按教程手动处理';
+  if (ctl && typeof ctl.update === 'function') ctl.update({ body: msg, type: 'error', sticky: true });
+  else toast({ title: '修复未完成', body: msg, type: 'error' });
+  openManualForIssue(issue, 'fix-failed');
 }
 
 async function fixIssue(issue) {
@@ -2630,11 +2688,13 @@ async function fixIssue(issue) {
           type: 'info',
           sticky: true,
         });
+        // 自动提权走不通时，同步把图文教程打开，避免用户对着系统窗口不知道勾哪个
+        openManualForIssue(issue, 'fix-failed');
       } else if (r.cancelled) {
         t.update({ title: '已取消', body: r.error || '没有拿到管理员授权，硬件加速没有改动。', type: 'info', spinner: false });
         setTimeout(t.dismiss, 4200);
       } else {
-        t.update({ title: '未能开启', body: r.error || r.note || '请重试', type: 'error', sticky: true });
+        failFix(issue, t, r.error || r.note || '未能开启硬件加速，已打开对应教程');
       }
       break;
     }
@@ -2670,7 +2730,7 @@ async function fixIssue(issue) {
         t.update({ title: '安卓运行时已重启', body: '授权弹窗请点「允许」', type: 'ok' });
         setTimeout(t.dismiss, 3000);
       } else {
-        t.update({ title: '重启失败', body: (r && r.error) || '请看诊断报告', type: 'error' });
+        failFix(issue, t, (r && r.error) || '重启失败，已打开对应教程');
       }
       break;
     }
@@ -2720,6 +2780,28 @@ async function fixIssue(issue) {
     case 'shared': {
       toast({ title: '请检查共享目录', body: '到「设置 → 集成与文件」确认本机共享目录存在且可写。', type: 'info', sticky: true });
       openSettings().then(() => focusGroup(document.querySelector('#settingsBody [data-cat="files"]'))).catch(() => {});
+      break;
+    }
+    // ---- 0.6.2 声音检测对应的修复动作 ----
+    case 'audio': {
+      const t = toast({ title: '正在打开安卓应用声音…', body: '马上重启运行时让 -no-audio 失效', type: 'info', sticky: true, spinner: true });
+      const s = await api.setSettings({ engine: { audio: true } }).catch(() => null);
+      if (!s) { failFix(issue, t, '没能保存声音设置，已打开对应教程'); break; }
+      state.settings = s;
+      fillSettings(s);
+      const r = await api.restartRuntime().catch(() => ({ ok: false }));
+      if (r && r.ok !== false) {
+        t.update({ title: '声音已打开', body: '运行时已重启，现在应该能听到应用声音了', type: 'ok' });
+        setTimeout(t.dismiss, 3600);
+      } else {
+        failFix(issue, t, '声音开关已打开，但运行时重启失败，已打开对应教程');
+      }
+      break;
+    }
+    case 'audioService': {
+      // MSIX / 普通权限都拿不到系统服务的提权操作，直接把教程送到用户面前
+      toast({ title: '需要手动启动 Windows Audio', body: '已打开教程，照着做一次即可', type: 'info', sticky: true });
+      openManualForIssue(issue, 'clicked');
       break;
     }
     case 'repairNetwork': {

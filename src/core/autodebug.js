@@ -8,11 +8,14 @@
  *
  * 判定层不碰 fs / child_process / electron，CI 可以直接 require 并单测
  * （教训见记忆 2026-11-17：CI 上 require 顶层依赖 electron 的模块会全红）。
+ * 唯一额外依赖是同目录的 manual.js（纯映射表），用来把问题直接指到内置教程章节。
  *
  * 一条铁律：obs 里没有的字段一律当作「不知道」，不能因为探测失败就报问题。
  * 误报比漏报更伤用户信任 —— 用户一旦发现弹出来的「检测结果」是假的，
  * 就再也不会相信自动检测给出的任何结论了。
  */
+
+const manual = require('./manual');
 
 /** 问题分类（设置页按这个顺序分组展示） */
 const CATEGORIES = [
@@ -33,7 +36,7 @@ const SEVERITY_RANK = { error: 3, warn: 2, info: 1 };
 function normalise(raw) {
   if (!raw || !raw.code) return null;
   const severity = SEVERITY_RANK[raw.severity] ? raw.severity : 'info';
-  return {
+  const item = {
     code: String(raw.code),
     category: CATEGORY_IDS.includes(raw.category) ? raw.category : 'runtime',
     severity,
@@ -44,6 +47,9 @@ function normalise(raw) {
     // detail 是给人看的补充信息（路径、数值等），不进标题
     detail: raw.detail === undefined || raw.detail === null ? '' : String(raw.detail),
   };
+  // 0.6.2：每条问题都自带「教程」目标，渲染层不用再复制一份故障分类表
+  item.help = manual.topicForIssue(item);
+  return item;
 }
 
 /**
@@ -268,6 +274,32 @@ function evaluate(obs) {
       title: '磁盘偏紧，快速启动快照已关闭',
       hint: '当前磁盘余量不到 4 GB，快照又被关掉：打开应用会走一次完整冷启动（十几秒）。磁盘够的话建议重新打开快照。',
       fix: 'settings',
+    });
+  }
+
+  /* ---------------- 声音 ---------------- */
+
+  // 0.6.2 新增：用户反馈「有的应用没声音」时，第一反应往往是系统音量问题，
+  // 实际上最常见是引擎开关被关掉（-no-audio）或 Windows Audio 服务被停了。
+  const audio = o.audio || {};
+  if (audio.checked && audio.enabled === false) {
+    push({
+      code: 'audio.disabled',
+      category: 'settings',
+      severity: 'warn',
+      title: '安卓应用声音已在设置里关闭',
+      hint: '模拟器是以 -no-audio 启动的，所以只有 ApkStart 里的应用没声音。点「处理」重新打开，并重启一次运行时即可。',
+      fix: 'audio',
+    });
+  }
+  if (audio.checked && audio.serviceRunning === false) {
+    push({
+      code: 'audio.windowsServiceStopped',
+      category: 'settings',
+      severity: 'warn',
+      title: 'Windows 音频服务（Audiosrv）未运行',
+      hint: '这会连系统其它软件一起没声音。到 services.msc 启动 Windows Audio 并设为自动，或在管理员 PowerShell 里执行 net start Audiosrv。',
+      fix: 'audioService',
     });
   }
 

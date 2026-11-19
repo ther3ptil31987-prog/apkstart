@@ -49,6 +49,7 @@ const { NotifyBridge } = require('./core/notify');
 const { AndroidSettings } = require('./core/android');
 const { Updater, findUninstaller } = require('./core/updater');
 const leftovers = require('./core/leftovers');
+const manual = require('./core/manual');
 
 // Windows 下窗口被遮挡时 capturePage 会拿到旧帧，自动化截图需要禁用遮挡计算
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -884,6 +885,78 @@ function showWindow() {
   mainWindow.focus();
 }
 
+// ---------------- 内置使用手册 ----------------
+
+let manualWindow = null;
+const manualAutoAt = new Map();
+
+/**
+ * 打开内置手册。payload 只描述「哪个故障」，具体章节由 core/manual.js 决定：
+ * 渲染层传 issue code / 安装报错 / topic id 都行，拿不到就回目录页。
+ * reason='fix-failed' 时做去重：同一章节 60 秒内只自动弹一次，避免连点修复
+ * 或批量安装失败时把用户淹没在手册窗口里。
+ */
+function openManual(payload = {}) {
+  const target = manual.resolve(payload);
+  const now = Date.now();
+  const last = manualAutoAt.get(target.id) || 0;
+  if (target.reason === 'fix-failed' && now - last < 60000) {
+    if (manualWindow && !manualWindow.isDestroyed()) {
+      manualWindow.show();
+      manualWindow.focus();
+    }
+    return target;
+  }
+  manualAutoAt.set(target.id, now);
+
+  try {
+    if (!manualWindow || manualWindow.isDestroyed()) {
+      manualWindow = new BrowserWindow({
+        width: 1080,
+        height: 780,
+        minWidth: 720,
+        minHeight: 520,
+        show: false,
+        backgroundColor: '#ffffff',
+        autoHideMenuBar: true,
+        icon: nativeImage.createFromBuffer(ICON_PNG),
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: false,
+          spellcheck: false,
+        },
+      });
+      manualWindow.on('closed', () => { manualWindow = null; });
+      // 手册里的外链（GitHub/Gitee）交给系统浏览器；内部锚点照常在窗口里跳。
+      manualWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+        return { action: 'deny' };
+      });
+      manualWindow.webContents.on('will-navigate', (e, url) => {
+        if (url.startsWith('file://')) return;
+        e.preventDefault();
+        if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+      });
+    }
+    manualWindow.setTitle(`ApkStart 使用手册 · ${target.title}`);
+    manualWindow.loadFile(path.join(__dirname, 'ui', 'manual.html'), { hash: target.anchor });
+    manualWindow.once('ready-to-show', () => {
+      if (!manualWindow || manualWindow.isDestroyed()) return;
+      manualWindow.show();
+      manualWindow.focus();
+    });
+    // 已经显示过的窗口再 loadFile 不会重新触发 ready-to-show
+    if (manualWindow.isVisible()) manualWindow.focus();
+    appLog(`manual open ${target.id}#${target.anchor} reason=${target.reason || 'manual'}`);
+  } catch (e) {
+    appLog(`manual open failed: ${e && e.message}`);
+    // 手册打不开也不能影响修复流程：至少给个能点的在线地址
+    shell.openExternal('https://github.com/RoutineMiku/apkstart#readme').catch(() => {});
+  }
+  return target;
+}
+
 function notify(title, body) {
   if (store.getSettings().notifyOnInstall === false) return;
   try {
@@ -997,6 +1070,7 @@ function buildTray() {
       : '';
     const menu = Menu.buildFromTemplate([
       { label: '打开 ApkStart', click: () => showWindow() },
+      { label: '使用手册', click: () => openManual({ topic: 'overview', reason: 'tray' }) },
       { type: 'separator' },
       ...(apps.length
         ? apps.map((a) => ({ label: a.label, click: () => runLaunch(a.package) }))
@@ -2588,6 +2662,8 @@ function registerIpc() {
   });
 
   ipcMain.handle('shell:open', (_e, url) => shell.openExternal(url));
+  // 内置手册：渲染层只说「哪个故障/哪个主题」，主进程解析成受信任的本地章节
+  ipcMain.handle('manual:open', (_e, payload) => openManual(payload || {}));
 
   /**
    * 打开「启用或关闭 Windows 功能」对话框。

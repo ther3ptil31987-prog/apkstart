@@ -512,6 +512,12 @@ body {
   border: 1px solid var(--brand); color: var(--brand); background: var(--brand-soft);
 }
 .dbg-item .dbg-fix:hover { background: var(--brand); color: #fff; }
+.dbg-item .dbg-help {
+  flex: 0 0 auto; align-self: center;
+  height: 28px; padding: 0 9px; font-size: 12px; border-radius: 8px;
+  border: 1px solid var(--line); color: var(--muted); background: transparent;
+}
+.dbg-item .dbg-help:hover { border-color: var(--brand); color: var(--brand); }
 .dbg-ok {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 12px; border-radius: 10px;
@@ -687,6 +693,12 @@ body {
   border: 1px solid var(--brand); color: var(--brand); background: var(--brand-soft);
 }
 .env-check-item .ec-fix:hover { background: var(--brand); color: #fff; }
+.env-check-item .ec-help {
+  flex: 0 0 auto; align-self: center;
+  height: 28px; padding: 0 9px; font-size: 12px; border-radius: 8px;
+  border: 1px solid var(--line); color: var(--muted); background: transparent;
+}
+.env-check-item .ec-help:hover { border-color: var(--brand); color: var(--brand); }
 .env-check-ok {
   display: flex; align-items: center; gap: 8px;
   padding: 12px 14px; color: var(--brand-dark); font-size: 12.5px;

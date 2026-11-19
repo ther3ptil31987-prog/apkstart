@@ -144,6 +144,27 @@ test('跟随应用 + 任意面板方向都不算冲突', () => {
   assert(!codes(b).includes('settings.orientationConflict'), 'auto 不该报冲突');
 });
 
+console.log('\n[自动检测 · 声音（0.6.2）]');
+test('安卓声音被关掉会报出来，并带上教程', () => {
+  const issues = ad.evaluate({ audio: { checked: true, enabled: false, serviceRunning: true } });
+  const it = issues.find((i) => i.code === 'audio.disabled');
+  assert(it, '应报声音开关被关');
+  assert(it.category === 'settings' && it.fix === 'audio', '应归到设置且能一键处理');
+  assert(it.help && it.help.id === 'sound', '应带内置教程');
+});
+
+test('Windows 音频服务停止会报出来', () => {
+  const issues = ad.evaluate({ audio: { checked: true, enabled: true, serviceRunning: false } });
+  const it = issues.find((i) => i.code === 'audio.windowsServiceStopped');
+  assert(it, '应报音频服务停止');
+  assert(it.fix === 'audioService', '应给出对应修复动作');
+});
+
+test('音频服务探测失败不当成问题', () => {
+  const issues = ad.evaluate({ audio: { checked: true, enabled: true, serviceRunning: null } });
+  assert(!codes(issues).includes('audio.windowsServiceStopped'), '不知道就不该报');
+});
+
 console.log('\n[自动检测 · 网络与日志]');
 test('安卓没网会报出来，并给出修复动作', () => {
   const issues = ad.evaluate({ network: { ok: false, reason: 'dns timeout' } });

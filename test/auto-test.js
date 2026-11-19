@@ -2791,6 +2791,22 @@ const { AdbClient, friendlyInstallError, friendlyLaunchError } = require('../src
     assert(/list\.push\(d\)/.test(scope), '原路径也要保留，兼容少数环境');
   });
 
+  await test('ARM-only 安装：报错本身就是重试理由，不能只看镜像文件在不在', () => {
+    const root = path.join(__dirname, '..');
+    const inst = fs.readFileSync(path.join(root, 'src', 'core', 'installer.js'), 'utf8');
+    // 曾经用 !playImageInfo().ok 当重试开关：镜像文件在磁盘上、但复用了没开翻译层的
+    // 旧模拟器时，重试被跳过却照样弹「正在重试」，用户看到红色「安装失败 + 正在重试」。
+    const retry = inst.slice(inst.indexOf('if (e.code === \'NO_MATCHING_ABIS\')'), inst.indexOf('if (e.code === \'NO_MATCHING_ABIS\')') + 260);
+    assert(!/NO_MATCHING_ABIS.*playImageInfo/.test(retry), 'ABI 不匹配重试不能再被 playImageInfo 卡住');
+    assert(/abiRetried = true/.test(inst), '二次仍失败要标记，文案才不会谎称正在重试');
+    const sw = inst.slice(inst.indexOf('async switchToCompat'), inst.indexOf('async install('));
+    assert(/invalidateSnapshot\(\)/.test(sw), '切兼容镜像必须作废旧快照，否则翻译层不生效');
+    assert(/runningHasArm/.test(inst) && /ro\.product\.cpu\.abilist/.test(inst), '装 ARM 应用前要看当前运行时的真实翻译能力');
+    const ui = fs.readFileSync(path.join(root, 'src', 'ui', 'app.js'), 'utf8');
+    const f = ui.slice(ui.indexOf('function friendlyInstallErrorText'), ui.indexOf('function friendlyInstallErrorText') + 900);
+    assert(!/NO_MATCHING_ABIS/i.test(f) || /正在|已切换到/.test(f.slice(f.indexOf('NO_MATCHING_ABIS'), f.indexOf('NO_MATCHING_ABIS') + 320)), '失败横幅文案要说清状态，不能只说「正在重试」');
+  });
+
   console.log(results.join('\n'));
   console.log(`\n结果：${passed} 通过，${failed} 失败\n`);
 
